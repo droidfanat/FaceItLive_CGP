@@ -26,20 +26,35 @@ media_path = './media/'
 model_path = 'model/'
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--webcam_id', type = int, default = 0)
-parser.add_argument('--stream_id', type = int, default = 1)
+
+parser.add_argument('--addr_input', type = str, default = '127.0.0.1')
+parser.add_argument('--port_input', type = int, default = 8081)
+
+parser.add_argument('--addr_output', type = str, default = '127.0.0.1')
+parser.add_argument('--port_output', type = int, default = 8082)
+
 parser.add_argument('--gpu_id', type = int, default = 0)
-parser.add_argument('--system', type = str, default = "win")
+parser.add_argument('--system', type = str, default = "linux")
+parser.add_argument('--cpu', type = bool, default = False)
 
 args = parser.parse_args()
-webcam_id = args.webcam_id
+
+
+
+
+addr_input_stream =  (args.addr_input,args.port_input)  
+addr_output_stream =  (args.addr_output, args.port_output) 
+
+
+
+
 gpu_id = args.gpu_id
-stream_id = args.stream_id
 system = args.system
+cpu = args.cpu
 
 webcam_height = 480
 webcam_width = 640
-screen_width, screen_height = pyautogui.size()
+#screen_width, screen_height = pyautogui.size()
 img_shape = [256, 256, 0]
 
 # if system=="linux":
@@ -51,7 +66,7 @@ first_order_path = 'first-order-model/'
 sys.path.insert(0,first_order_path)
 reset = True
 
-# import methods from first-order-model
+#import methods from first-order-model
 import demo
 from demo import load_checkpoints, make_animation, tqdm
 
@@ -89,10 +104,10 @@ def main(addr_input_stream = ('127.0.0.1', 8081), addr_output_stream = ('127.0.0
     global source_image
     source_image =  readnextimage(0)
 
-    s_input_stream = socket(AF_INET, SOCK_STREAM) # create TCP socket 
+    s_input_stream = socket(AF_INET, SOCK_STREAM)  
     s_input_stream.connect(addr_input_stream)
 
-    s_output_stream = socket(AF_INET, SOCK_STREAM) # create UDP socket SOCK_DGRAM
+    s_output_stream = socket(AF_INET, SOCK_STREAM) 
     s_output_stream.connect(addr_output_stream)
 
 
@@ -111,7 +126,7 @@ def main(addr_input_stream = ('127.0.0.1', 8081), addr_output_stream = ('127.0.0
 
     # load models
     net = load_face_model()
-    generator, kp_detector = demo.load_checkpoints(config_path=f'{first_order_path}config/vox-adv-256.yaml', checkpoint_path=f'{model_path}/vox-adv-cpk.pth.tar')
+    generator, kp_detector = demo.load_checkpoints(config_path=f'{first_order_path}config/vox-adv-256.yaml', checkpoint_path=f'{model_path}/vox-adv-cpk.pth.tar', cpu=cpu)
 
     
     # create windows
@@ -138,10 +153,16 @@ def main(addr_input_stream = ('127.0.0.1', 8081), addr_output_stream = ('127.0.0
         data = None
         data = s_input_stream.recv(921600)
         receive_data = np.frombuffer(data, dtype='uint8')
-        frame = cv2.imdecode(receive_data, 1)
 
-        frame = cv2.resize(frame, (640, 480))
+        frame = cv2.imdecode(receive_data, cv2.IMREAD_COLOR)
+        try:
+            frame = cv2.resize(frame, (640, 480))
+        except:
+            print("e")
+            continue
+
         frame = cv2.flip(frame,1)
+            
 
         if (previous is None or reset is True):
             x1,y1,x2,y2 = find_face_cut(net,frame)
@@ -186,8 +207,9 @@ def main(addr_input_stream = ('127.0.0.1', 8081), addr_output_stream = ('127.0.0
             stream_v = cv2.cvtColor(stream_v, cv2.COLOR_BGR2RGB)
             stream_v = (stream_v*255).astype(np.uint8)
             #print("output to fakecam")
-            r_img = cv2.imdecode(stream_v, 1)
-            cv2.putText(r_img, "retransleted", (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2)
+            cv2.putText(stream_v, "retransleted", (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2)
+            _, send_data = cv2.imencode('.jpg', stream_v, [cv2.IMWRITE_JPEG_QUALITY, 50])
+            s_output_stream.send(send_data)
             #camera.schedule_frame(stream_v) #!!!!!!!!!
 
         k = cv2.waitKey(1) 
@@ -222,7 +244,7 @@ def main(addr_input_stream = ('127.0.0.1', 8081), addr_output_stream = ('127.0.0
 
 # transform face with first-order-model
 def process_image(source_image,base,current,net, generator,kp_detector,relative):
-    predictions = make_animation(source_image, [base,current], generator, kp_detector, relative=relative, adapt_movement_scale=False)
+    predictions = make_animation(source_image, [base,current], generator, kp_detector, relative=relative, adapt_movement_scale=False, cpu=cpu)
     return predictions[1] 
 
 def load_face_model():
@@ -302,3 +324,5 @@ def readnextimage(position=-1):
         else:
             pos=0
     return readimage()
+
+main(addr_input_stream = addr_input_stream, addr_output_stream = addr_output_stream)

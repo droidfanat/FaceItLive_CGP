@@ -26,7 +26,11 @@ while True:
         r_img = cv2.imdecode(receive_data, 1)
 
         cv2.putText(r_img, "server", (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2)
-        cv2.imshow('server', r_img)
+        try:
+            cv2.imshow('server', r_img)
+        except:
+            continue
+        
     except BlockingIOError as e:
         pass
 
