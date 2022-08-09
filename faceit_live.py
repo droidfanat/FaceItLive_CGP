@@ -10,7 +10,7 @@ import PIL.Image as Image
 import PIL.ImageFilter
 import io
 from io import BytesIO
-import pyautogui
+#import pyautogui
 import os
 import glob
 from argparse import Namespace
