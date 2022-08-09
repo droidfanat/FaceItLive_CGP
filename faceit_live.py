@@ -1,4 +1,5 @@
 import imageio
+from socket import *
 import numpy as np
 import pandas as pd
 from skimage.transform import resize
@@ -41,9 +42,9 @@ webcam_width = 640
 screen_width, screen_height = pyautogui.size()
 img_shape = [256, 256, 0]
 
-if system=="linux":
-    print("Linux version, importing FakeWebCam")
-    import pyfakewebcam
+# if system=="linux":
+#     print("Linux version, importing FakeWebCam")
+#     import pyfakewebcam
 
 
 first_order_path = 'first-order-model/'
@@ -78,22 +79,35 @@ for filename in os.listdir(media_path):
 
 ############## end setup ####
 
-def main():
+
+
+
+############################
+
+
+def main(addr_input_stream = ('127.0.0.1', 8081), addr_output_stream = ('127.0.0.1', 8082)):
     global source_image
     source_image =  readnextimage(0)
 
-    # start streaming
-    if system=="linux":
-        camera = pyfakewebcam.FakeWebcam(f'/dev/video{stream_id}', webcam_width, webcam_height)
-        camera.print_capabilities()
-        print(f"Fake webcam created on /dev/video{stream_id}. Use Firefox and join a Google Meeting to test.")
+    s_input_stream = socket(AF_INET, SOCK_STREAM) # create TCP socket 
+    s_input_stream.connect(addr_input_stream)
+
+    s_output_stream = socket(AF_INET, SOCK_STREAM) # create UDP socket SOCK_DGRAM
+    s_output_stream.connect(addr_output_stream)
+
+
+    # # start streaming
+    # if system=="linux":
+    #     camera = pyfakewebcam.FakeWebcam(f'/dev/video{stream_id}', webcam_width, webcam_height)
+    #     camera.print_capabilities()
+    #     print(f"Fake webcam created on /dev/video{stream_id}. Use Firefox and join a Google Meeting to test.")
 
     # capture webcam
-    video_capture = cv2.VideoCapture(webcam_id)
-    time.sleep(1)
-    width = video_capture.get(3)  # float
-    height = video_capture.get(4) # float
-    print("webcam dimensions = {} x {}".format(width,height))
+    # video_capture = cv2.VideoCapture(webcam_id)
+    # time.sleep(1)
+    # width = video_capture.get(3)  # float
+    # height = video_capture.get(4) # float
+    # print("webcam dimensions = {} x {}".format(width,height))
 
     # load models
     net = load_face_model()
@@ -101,17 +115,17 @@ def main():
 
     
     # create windows
-    cv2.namedWindow('Face', cv2.WINDOW_GUI_NORMAL) # extracted face
-    cv2.moveWindow('Face', int(screen_width//2)-150, 100)
-    cv2.resizeWindow('Face', 256,256)
+    # cv2.namedWindow('Face', cv2.WINDOW_GUI_NORMAL) # extracted face
+    # cv2.moveWindow('Face', int(screen_width//2)-150, 100)
+    # cv2.resizeWindow('Face', 256,256)
 
-    cv2.namedWindow('DeepFake', cv2.WINDOW_GUI_NORMAL) # face transformation
-    cv2.moveWindow('DeepFake', int(screen_width//2)+150, 100)
-    cv2.resizeWindow('DeepFake', 256, 256)
+    # cv2.namedWindow('DeepFake', cv2.WINDOW_GUI_NORMAL) # face transformation
+    # cv2.moveWindow('DeepFake', int(screen_width//2)+150, 100)
+    # cv2.resizeWindow('DeepFake', 256, 256)
 
-    cv2.namedWindow('Stream', cv2.WINDOW_GUI_NORMAL) # rendered to fake webcam
-    cv2.moveWindow('Stream', int(screen_width//2)-int(webcam_width//2), 400)
-    cv2.resizeWindow('Stream', webcam_width,webcam_height)
+    # cv2.namedWindow('Stream', cv2.WINDOW_GUI_NORMAL) # rendered to fake webcam
+    # cv2.moveWindow('Stream', int(screen_width//2)-int(webcam_width//2), 400)
+    # cv2.resizeWindow('Stream', webcam_width,webcam_height)
 
     
     print("Press C to center Webcam, Press B/N for previous/next image in media directory, T to alter between relative and absolute transformation, Q to quit")
@@ -120,7 +134,12 @@ def main():
     previous = None
 
     while True:
-        ret, frame = video_capture.read()
+        #ret, frame = video_capture.read()
+        data = None
+        data = s_input_stream.recv(921600)
+        receive_data = np.frombuffer(data, dtype='uint8')
+        frame = cv2.imdecode(receive_data, 1)
+
         frame = cv2.resize(frame, (640, 480))
         frame = cv2.flip(frame,1)
 
@@ -152,14 +171,14 @@ def main():
         stream_v = cv2.copyMakeBorder(rgb, 0, 0, x_border if x_border >=0 else 0, x_border if x_border >=0 else 0, cv2.BORDER_CONSTANT)
         
         #cv2.imshow('Webcam', frame)
-        cv2.imshow('Face', curr_face)
-        cv2.imshow('DeepFake', deep_fake)
+        # cv2.imshow('Face', curr_face)
+        # cv2.imshow('DeepFake', deep_fake)
         #cv2.imshow('Previous', previous)
         #cv2.imshow('RGB', rgb)
         #cv2.imshow('Source Image', source_image)
         #time.sleep(1/30.0)
 
-        cv2.imshow('Stream',stream_v)
+        # cv2.imshow('Stream',stream_v)
 
         # stream to fakewebcam
         if system=="linux":
@@ -167,13 +186,15 @@ def main():
             stream_v = cv2.cvtColor(stream_v, cv2.COLOR_BGR2RGB)
             stream_v = (stream_v*255).astype(np.uint8)
             #print("output to fakecam")
-            camera.schedule_frame(stream_v)
+            r_img = cv2.imdecode(stream_v, 1)
+            cv2.putText(r_img, "retransleted", (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2)
+            #camera.schedule_frame(stream_v) #!!!!!!!!!
 
         k = cv2.waitKey(1) 
         # Hit 'q' on the keyboard to quit!
         if k & 0xFF == ord('q'):
             print("Quiting")
-            video_capture.release()
+            #video_capture.release()
             break
         elif k==ord('c'):
             # center
@@ -281,5 +302,3 @@ def readnextimage(position=-1):
         else:
             pos=0
     return readimage()
-
-main()
